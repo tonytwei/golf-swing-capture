@@ -1,103 +1,147 @@
-import Image from "next/image";
+"use client";
+import React, { useEffect, useRef, useState } from "react";
+// google-chrome --use-fake-device-for-media-stream --use-file-for-fake-video-capture=d:\Windows Default Folders\Desktop\videoplayback.mjpeg
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [recording, setRecording] = useState(false);
+  const [videoURL, setVideoURL] = useState<string | null>(null);
+  const [status, setStatus] = useState("Idle");
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  // Always show camera preview in the background
+  useEffect(() => {
+    let isMounted = true;
+    const getCamera = async () => {
+      try {
+        // Stop previous stream if switching
+        cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode },
+          audio: false,
+        });
+        cameraStreamRef.current = stream;
+        if (cameraVideoRef.current && isMounted) {
+          cameraVideoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        setStatus("Camera not available");
+      }
+    };
+    getCamera();
+    return () => {
+      isMounted = false;
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, [facingMode]);
+
+  const startRecording = async () => {
+    setStatus("Recording...");
+    setVideoURL(null);
+    setRecording(true);
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode },
+      audio: true,
+    });
+    streamRef.current = stream;
+
+    const chunks: Blob[] = [];
+    const mediaRecorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = mediaRecorder;
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, { type: "video/webm" });
+      setVideoURL(URL.createObjectURL(blob));
+      setStatus("Stopped");
+      stream.getTracks().forEach((t) => t.stop());
+      setRecording(false);
+    };
+
+    mediaRecorder.start();
+  };
+
+  const stopRecording = () => {
+    setStatus("Stopping...");
+    mediaRecorderRef.current?.stop();
+  };
+
+  const reset = () => {
+    setVideoURL(null);
+    setStatus("Idle");
+    setRecording(false);
+  };
+
+  const switchCamera = () => {
+    setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
+  };
+
+  return (
+    <div className="relative flex flex-col items-center justify-center min-h-screen gap-8 p-8">
+      {/* Camera preview as background */}
+      <video
+        ref={cameraVideoRef}
+        autoPlay
+        muted
+        playsInline
+        className="fixed inset-0 w-full h-full object-cover -z-10"
+        style={{ filter: "brightness(0.7)" }}
+      />
+      <div className="relative z-10 flex flex-col items-center gap-8">
+        <h1 className="text-2xl font-bold mb-4 text-white drop-shadow">Record Your Swing</h1>
+        <p className="text-white drop-shadow">
+          Status: <span className="font-mono">{status}</span>
+        </p>
+        <button
+          className="bg-yellow-600 text-white px-4 py-2 rounded font-bold"
+          onClick={switchCamera}
+          style={{ marginBottom: 8 }}
+        >
+          Switch Camera
+        </button>
+        {!recording && !videoURL && (
+          <button
+            className="bg-green-600 text-white px-6 py-2 rounded font-bold"
+            onClick={startRecording}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Play (Start Recording)
+          </button>
+        )}
+        {recording && (
+          <button
+            className="bg-red-600 text-white px-6 py-2 rounded font-bold"
+            onClick={stopRecording}
           >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+            Stop
+          </button>
+        )}
+        {videoURL && (
+          <div className="flex flex-col items-center gap-4">
+            <video src={videoURL} controls width={320} />
+            <div className="flex gap-4">
+              <a
+                href={videoURL}
+                download="recording.webm"
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                Save Video
+              </a>
+              <button
+                className="bg-gray-600 text-white px-4 py-2 rounded"
+                onClick={reset}
+              >
+                Restart
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
-}
